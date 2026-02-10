@@ -9,30 +9,43 @@ from pathlib import Path
 # ------------------------
 st.set_page_config(page_title="Fraud Detection Demo", layout="centered")
 
-# Determine the project root relative to this file
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT / "models" / "lightgbm_baseline.pkl"
 
-FRAUD_THRESHOLD = 0.001  # business-driven threshold
+FRAUD_THRESHOLD = 0.001
+
+# ------------------------
+# Feature Mapping (Human Readable)
+# ------------------------
+# Since V1-V28 are anonymized PCA features, we simulate meaningful names for the demo
+FEATURE_DESC = {
+    "V1": "User Login Behavior",
+    "V2": "Location Consistency",
+    "V3": "Device Integrity",
+    "V4": "Transaction Velocity",
+    "V5": "Network Security Score",
+    "Amount": "Transaction Amount"
+}
 
 # ------------------------
 # Helper Functions
 # ------------------------
 def explain_with_words(shap_df, top_n=3):
     """
-    Convert top SHAP features into a human-readable explanation.
+    Convert top SHAP features into a human-readable explanation using friendly names.
     """
     top_features = shap_df.head(top_n)
 
     reasons = []
     for _, row in top_features.iterrows():
         fname = row["feature"]
+        friendly_name = FEATURE_DESC.get(fname, fname) # Fallback to code if no desc
         sval = row["shap_value"]
 
         if sval > 0:
-            reasons.append(f"**{fname}** increased fraud risk")
+            reasons.append(f"**{friendly_name}** ({fname}) caused suspicion")
         else:
-            reasons.append(f"**{fname}** reduced fraud risk")
+            reasons.append(f"**{friendly_name}** ({fname}) was normal")
 
     explanation = (
         "The model flagged this transaction as fraud mainly because "
@@ -42,7 +55,7 @@ def explain_with_words(shap_df, top_n=3):
     return explanation
 
 # ------------------------
-# Load Model & Explainer
+# Load Resources
 # ------------------------
 @st.cache_resource
 def load_resources():
@@ -64,7 +77,8 @@ if model is None:
 else:
     EXPECTED_FEATURES = model.feature_name_
 
-    st.subheader("Enter transaction features")
+    st.subheader("Enter transaction details")
+    # Using 5 features as per original demo
     num_features = 5
     input_data = {}
 
@@ -72,77 +86,58 @@ else:
     
     with col1:
         for i in range(1, num_features + 1):
-            input_data[f"V{i}"] = st.number_input(f"V{i}", value=0.0)
+            feat_name = f"V{i}"
+            desc = FEATURE_DESC.get(feat_name, feat_name)
+            input_data[feat_name] = st.number_input(f"{desc} (V{i})", value=0.0)
 
     with col2:
-        input_data["Amount"] = st.number_input("Amount", value=0.0)
+        input_data["Amount"] = st.number_input("Transaction Amount", value=0.0)
 
-    if st.button("Check Fraud"):
-        # ------------------------
-        # Prediction Logic
-        # ------------------------
+    if st.button("Check Fraud Risk"):
         try:
-            # Convert input to DataFrame
+            # Prepare Input
             X = pd.DataFrame([input_data])
-
-            # Handle missing features
             for col in EXPECTED_FEATURES:
                 if col not in X.columns:
                     X[col] = 0.0
-
-            # Reorder columns to match training
             X = X[EXPECTED_FEATURES]
 
             # Predict
             prob = model.predict_proba(X)[0, 1]
             prediction = int(prob >= FRAUD_THRESHOLD)
 
-            # ------------------------
-            # SHAP Explanation
-            # ------------------------
-            # shap_values returns a matrix (n_samples, n_features) or list of matrices
+            # Explain
             shap_values = explainer.shap_values(X)
-            
-            # Handle different return types of shap_values (list vs array)
             if isinstance(shap_values, list):
-                # Binary classification often returns list [class0_contribs, class1_contribs]
-                # We care about class 1 (Fraud)
                 feature_contribs = shap_values[1][0]
             else:
                 feature_contribs = shap_values[0]
 
             shap_df = (
-                pd.DataFrame(
-                    {
-                        "feature": X.columns,
-                        "shap_value": feature_contribs,
-                    }
-                )
+                pd.DataFrame({"feature": X.columns, "shap_value": feature_contribs})
                 .sort_values(by="shap_value", ascending=False)
             )
 
             explanation_text = explain_with_words(shap_df)
 
-            # ------------------------
-            # Display Results
-            # ------------------------
-            st.subheader("Result")
+            # Display
+            st.subheader("Analysis Result")
             
             if prediction == 1:
-                st.error(f"**Prediction:** Fraud")
+                st.error(f"🚨 **FRAUD DETECTED**")
             else:
-                st.success(f"**Prediction:** Not Fraud")
+                st.success(f"✅ **Legitimate Transaction**")
                 
-            st.write(f"**Probability:** {prob:.6f}")
-            st.write(f"**Threshold used:** {FRAUD_THRESHOLD}")
+            st.write(f"**Risk Score:** {prob:.2%}")
+            st.info(f"💡 **Reasoning:** {explanation_text}")
             
-            st.markdown(f"**Explanation:** {explanation_text}")
-            
-            with st.expander("See detailed feature contributions"):
-                st.dataframe(shap_df.style.background_gradient(cmap="coolwarm", subset=["shap_value"]))
+            with st.expander("View Technical Details"):
+                # Add friendly names to dataframe for display
+                shap_df["description"] = shap_df["feature"].map(FEATURE_DESC)
+                st.dataframe(shap_df[["description", "feature", "shap_value"]].style.background_gradient(cmap="coolwarm", subset=["shap_value"]))
 
         except Exception as e:
-            st.error(f"An error occurred during prediction: {e}")
+            st.error(f"An error occurred: {e}")
 
     st.write("---")
-    st.caption("This demo runs the fraud detection model directly in the app.")
+    st.caption("Note: 'V' features are anonymized banking parameters. Labels are simulated for this demo.")
