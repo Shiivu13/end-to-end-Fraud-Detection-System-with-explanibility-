@@ -135,7 +135,9 @@ Copy code
 
 [http://localhost:8000](https://demofrauddetection.streamlit.app/)
 Frontend (Streamlit)
-
+Bash
+Copy code
+streamlit run frontend/app.py
 
 📌 Notes
 Feature values are PCA-transformed and used for demonstration purposes.
