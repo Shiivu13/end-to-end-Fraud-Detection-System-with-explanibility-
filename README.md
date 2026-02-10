@@ -133,11 +133,9 @@ docker run -p 8000:8000 fraud-api
 API available at:
 Copy code
 
-http://localhost:8000
+[http://localhost:8000](https://demofrauddetection.streamlit.app/)
 Frontend (Streamlit)
-Bash
-Copy code
-streamlit run frontend/app.py
+
 
 📌 Notes
 Feature values are PCA-transformed and used for demonstration purposes.
