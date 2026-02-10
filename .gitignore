@@ -6,6 +6,6 @@ __pycache__/
 data/processed/*.csv
 !data/processed/processed_preview.csv
 data/raw/
-models/*.pkl
+
 *.zip
 *.tar.gz
