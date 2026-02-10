@@ -1,0 +1,11 @@
+venv311/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+data/processed/*.csv
+!data/processed/processed_preview.csv
+data/raw/
+models/*.pkl
+*.zip
+*.tar.gz

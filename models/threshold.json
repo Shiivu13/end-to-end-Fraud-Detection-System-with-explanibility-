@@ -1,0 +1,5 @@
+{
+    "threshold":0.82,
+    "strategy":"precision_first",
+    "metric":"precision_at_0.5"
+}
