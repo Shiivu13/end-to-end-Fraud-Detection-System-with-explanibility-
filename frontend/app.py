@@ -1,40 +1,94 @@
 import streamlit as st
-import requests
+import pandas as pd
+import joblib
+from pathlib import Path
 
-API_URL = "http://localhost:8000/predict"
-
+# ------------------------
+# Setup & Paths
+# ------------------------
 st.set_page_config(page_title="Fraud Detection Demo", layout="centered")
 
+# Determine the project root relative to this file
+# frontend/app.py -> parent is frontend -> parent is project root
+ROOT = Path(__file__).resolve().parent.parent
+MODEL_PATH = ROOT / "models" / "lightgbm_baseline.pkl"
+
+FRAUD_THRESHOLD = 0.001  # business-driven threshold
+
+# ------------------------
+# Load Model
+# ------------------------
+@st.cache_resource
+def load_model():
+    if not MODEL_PATH.exists():
+        st.error(f"Model file not found at: {MODEL_PATH}")
+        return None
+    return joblib.load(MODEL_PATH)
+
+model = load_model()
+
+# ------------------------
+# UI
+# ------------------------
 st.title("Fraud Detection Demo")
 
-st.subheader("Enter transaction features")
-num_features =5
-input_data={}
+if model is None:
+    st.warning("Please ensure the model exists in the 'models' directory.")
+else:
+    EXPECTED_FEATURES = model.feature_name_
 
-for i in range(1, num_features+1):
-    input_data[f"V{i}"] = st.number_input(f"V{i}", value=0.0)
-input_data["Amount"] = st.number_input("Amount", value=0.0)
+    st.subheader("Enter transaction features")
+    num_features = 5
+    input_data = {}
 
-if st.button("Check Fraud"):
-    try:
-        payload={
-             "features": input_data
-        }
-        response = requests.post(API_URL, json=payload)
-        if response.status_code == 200:
-            result=response.json()
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        for i in range(1, num_features + 1):
+            input_data[f"V{i}"] = st.number_input(f"V{i}", value=0.0)
 
+    with col2:
+        input_data["Amount"] = st.number_input("Amount", value=0.0)
+
+    if st.button("Check Fraud"):
+        # ------------------------
+        # Prediction Logic
+        # ------------------------
+        try:
+            # Convert input to DataFrame
+            X = pd.DataFrame([input_data])
+
+            # Handle missing features
+            missing_features = []
+            for col in EXPECTED_FEATURES:
+                if col not in X.columns:
+                    X[col] = 0.0
+                    missing_features.append(col)
+
+            # Reorder columns to match training
+            X = X[EXPECTED_FEATURES]
+
+            # Predict
+            prob = model.predict_proba(X)[0, 1]
+            prediction = int(prob >= FRAUD_THRESHOLD)
+
+            # ------------------------
+            # Display Results
+            # ------------------------
             st.subheader("Result")
-            st.write(f"**Prediction:**{'Fraud' if result['prediction']==1 else 'Not Fraud'}")
-            st.write(f"**Probability:** {result['probability']}")
-            st.write(f"**Threshold used:**{result['threshold_used']}")
-            st.write("**Explanation:** {result['explanation']}")
-        else:
-            st.error(f"API Error: {response.text}")
-    except Exception as e:
-                st.error(f"Connection Error: {e}")
+            
+            if prediction == 1:
+                st.error(f"**Prediction:** Fraud")
+            else:
+                st.success(f"**Prediction:** Not Fraud")
+                
+            st.write(f"**Probability:** {prob:.6f}")
+            st.write(f"**Threshold used:** {FRAUD_THRESHOLD}")
+            
+            st.write("**Explanation:** Prediction based on learned transaction patterns.")
 
-st.write("This demo allows you to test the fraud detection API")
-st.info("Backend API must be running on http://localhost:8000")
+        except Exception as e:
+            st.error(f"An error occurred during prediction: {e}")
 
-
+    st.write("---")
+    st.caption("This demo runs the fraud detection model directly in the app.")
