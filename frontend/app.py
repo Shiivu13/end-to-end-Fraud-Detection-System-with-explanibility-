@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import shap
 from pathlib import Path
 
 # ------------------------
@@ -9,23 +10,49 @@ from pathlib import Path
 st.set_page_config(page_title="Fraud Detection Demo", layout="centered")
 
 # Determine the project root relative to this file
-# frontend/app.py -> parent is frontend -> parent is project root
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT / "models" / "lightgbm_baseline.pkl"
 
 FRAUD_THRESHOLD = 0.001  # business-driven threshold
 
 # ------------------------
-# Load Model
+# Helper Functions
+# ------------------------
+def explain_with_words(shap_df, top_n=3):
+    """
+    Convert top SHAP features into a human-readable explanation.
+    """
+    top_features = shap_df.head(top_n)
+
+    reasons = []
+    for _, row in top_features.iterrows():
+        fname = row["feature"]
+        sval = row["shap_value"]
+
+        if sval > 0:
+            reasons.append(f"**{fname}** increased fraud risk")
+        else:
+            reasons.append(f"**{fname}** reduced fraud risk")
+
+    explanation = (
+        "The model flagged this transaction as fraud mainly because "
+        + ", ".join(reasons)
+        + "."
+    )
+    return explanation
+
+# ------------------------
+# Load Model & Explainer
 # ------------------------
 @st.cache_resource
-def load_model():
+def load_resources():
     if not MODEL_PATH.exists():
-        st.error(f"Model file not found at: {MODEL_PATH}")
-        return None
-    return joblib.load(MODEL_PATH)
+        return None, None
+    model = joblib.load(MODEL_PATH)
+    explainer = shap.TreeExplainer(model)
+    return model, explainer
 
-model = load_model()
+model, explainer = load_resources()
 
 # ------------------------
 # UI
@@ -33,7 +60,7 @@ model = load_model()
 st.title("Fraud Detection Demo")
 
 if model is None:
-    st.warning("Please ensure the model exists in the 'models' directory.")
+    st.error(f"Model file not found at: {MODEL_PATH}")
 else:
     EXPECTED_FEATURES = model.feature_name_
 
@@ -59,11 +86,9 @@ else:
             X = pd.DataFrame([input_data])
 
             # Handle missing features
-            missing_features = []
             for col in EXPECTED_FEATURES:
                 if col not in X.columns:
                     X[col] = 0.0
-                    missing_features.append(col)
 
             # Reorder columns to match training
             X = X[EXPECTED_FEATURES]
@@ -71,6 +96,32 @@ else:
             # Predict
             prob = model.predict_proba(X)[0, 1]
             prediction = int(prob >= FRAUD_THRESHOLD)
+
+            # ------------------------
+            # SHAP Explanation
+            # ------------------------
+            # shap_values returns a matrix (n_samples, n_features) or list of matrices
+            shap_values = explainer.shap_values(X)
+            
+            # Handle different return types of shap_values (list vs array)
+            if isinstance(shap_values, list):
+                # Binary classification often returns list [class0_contribs, class1_contribs]
+                # We care about class 1 (Fraud)
+                feature_contribs = shap_values[1][0]
+            else:
+                feature_contribs = shap_values[0]
+
+            shap_df = (
+                pd.DataFrame(
+                    {
+                        "feature": X.columns,
+                        "shap_value": feature_contribs,
+                    }
+                )
+                .sort_values(by="shap_value", ascending=False)
+            )
+
+            explanation_text = explain_with_words(shap_df)
 
             # ------------------------
             # Display Results
@@ -85,7 +136,10 @@ else:
             st.write(f"**Probability:** {prob:.6f}")
             st.write(f"**Threshold used:** {FRAUD_THRESHOLD}")
             
-            st.write("**Explanation:** Prediction based on learned transaction patterns.")
+            st.markdown(f"**Explanation:** {explanation_text}")
+            
+            with st.expander("See detailed feature contributions"):
+                st.dataframe(shap_df.style.background_gradient(cmap="coolwarm", subset=["shap_value"]))
 
         except Exception as e:
             st.error(f"An error occurred during prediction: {e}")
