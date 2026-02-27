@@ -1,5 +1,5 @@
 # end-to-end-Fraud-Detection-System-with-explanibility-
-
+**🔗 Live Demo:**[http://localhost:8000](https://demofrauddetection.streamlit.app/)
 Fraud Detection System (End-to-End ML Project)
 A production-style fraud detection system built step by step with a strong focus on real-world constraints such as imbalanced data, explainability, decision thresholds, and deployment reliability.
 This project emphasizes engineering decisions and system ownership, not just model accuracy.
@@ -133,7 +133,7 @@ docker run -p 8000:8000 fraud-api
 API available at:
 Copy code
 
-[http://localhost:8000](https://demofrauddetection.streamlit.app/)
+
 Frontend (Streamlit)
 Bash
 Copy code
